@@ -18,7 +18,7 @@ namespace fs = std::filesystem;
 
 int main()
 {
-    double section1Points = 20.0;
+    double section1Points = 10.0;
     int pointGain=0;
     int pointSum=0;
     double youngModulus=10000;
