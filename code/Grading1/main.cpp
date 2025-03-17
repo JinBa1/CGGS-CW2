@@ -60,7 +60,7 @@ int main()
                 Vxyz.segment(3*i,3)=objV.row(i).transpose();
             
             //cout<<"Vxyz: "<<Vxyz<<endl;
-            Mesh m(Vxyz,objF, objT, 0, youngModulus, PoissonRatio, density, false, RowVector3d::Zero(), RowVector4d::Zero());
+            Mesh m(Vxyz,objF, objT, 0, youngModulus, PoissonRatio, density, false, RowVector3d::Zero(), {1.0,0.0,0.0,0.0});
             
             auto start = std::chrono::high_resolution_clock::now();
             m.create_global_matrices(timeStep, alpha, beta);
