@@ -58,6 +58,9 @@ public:
     
     //This should be called whenever the timestep changes
     void init_scene(double _timeStep, const double alpha, const double beta){
+
+        for (int i=0;i<meshes.size();i++)
+            globalOrigPositions.segment(meshes[i].globalOffset, meshes[i].origPositions.size())<<meshes[i].origPositions;
         
         //TODO
         mesh2global();
