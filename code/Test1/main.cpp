@@ -36,33 +36,57 @@ double max_sparse(const Eigen::SparseMatrix<double>& mat, int &rowIndex, int &co
     return maxValue;
 }
 
-// Helper function to compare two matrices and print differences
+// Modified function to count and report all differences
 void compareSparseMatrices(const string& name, const SparseMatrix<double>& computed,
                           const SparseMatrix<double>& groundTruth, double tolerance) {
     int rowIndex, colIndex;
     double maxValue = max_sparse(groundTruth-computed, rowIndex, colIndex);
+    int diffCount = 0;
 
     cout << "Checking " << name << " matrix..." << endl;
 
+    // Count differences by iterating through non-zero entries in both matrices
+    for (int k = 0; k < groundTruth.outerSize(); ++k) {
+        for (SparseMatrix<double>::InnerIterator it(groundTruth, k); it; ++it) {
+            int r = it.row();
+            int c = it.col();
+            double gtVal = it.value();
+            double compVal = computed.coeff(r, c);
+
+            if (std::abs(gtVal - compVal) > tolerance) {
+                diffCount++;
+            }
+        }
+    }
+
+    // Also check for values in computed that aren't in groundTruth
+    for (int k = 0; k < computed.outerSize(); ++k) {
+        for (SparseMatrix<double>::InnerIterator it(computed, k); it; ++it) {
+            int r = it.row();
+            int c = it.col();
+            double compVal = it.value();
+            double gtVal = groundTruth.coeff(r, c);
+
+            // If this element is zero in ground truth but non-zero in computed
+            if (gtVal == 0 && std::abs(compVal) > tolerance) {
+                diffCount++;
+            }
+        }
+    }
+
     if ((maxValue <= tolerance) && (!std::isnan(maxValue))) {
-        cout << name << " is good!" << endl;
+        cout << name << " is good! No differences found." << endl;
     } else {
-        cout << name << "(" << rowIndex << "," << colIndex << ")="
-             << computed.coeff(rowIndex, colIndex) << ", Ground-truth "
-             << name << "(" << rowIndex << "," << colIndex << ")="
+        cout << name << " has " << diffCount << " differences exceeding tolerance." << endl;
+        cout << "Max difference at (" << rowIndex << "," << colIndex << "): "
+             << computed.coeff(rowIndex, colIndex) << " vs. ground truth "
              << groundTruth.coeff(rowIndex, colIndex) << endl;
 
-        // Additional debug info for this element
-        cout << "Difference at (" << rowIndex << "," << colIndex << "): "
-             << groundTruth.coeff(rowIndex, colIndex) - computed.coeff(rowIndex, colIndex) << endl;
-        cout << "Ratio: " << groundTruth.coeff(rowIndex, colIndex) / computed.coeff(rowIndex, colIndex) << endl;
+        // Additional debug info for the maximum difference element
+        cout << "Difference: " << groundTruth.coeff(rowIndex, colIndex) - computed.coeff(rowIndex, colIndex) << endl;
 
-        // Check if the matrices have the same sparsity pattern
-        bool computedHasValue = computed.coeff(rowIndex, colIndex) != 0;
-        bool groundTruthHasValue = groundTruth.coeff(rowIndex, colIndex) != 0;
-
-        if (computedHasValue != groundTruthHasValue) {
-            cout << "Sparsity pattern mismatch at (" << rowIndex << "," << colIndex << ")" << endl;
+        if (computed.coeff(rowIndex, colIndex) != 0) {
+            cout << "Ratio: " << groundTruth.coeff(rowIndex, colIndex) / computed.coeff(rowIndex, colIndex) << endl;
         }
     }
 }
@@ -76,7 +100,7 @@ int main()
     double alpha = 0.1, beta = 0.1, timeStep = 0.02;
 
     // Set the specific mesh file to debug here (leave empty to test all meshes)
-    string specificMeshFile = "box_tri.mesh";
+    string specificMeshFile = "cube86.mesh";
     //string specificMeshFile = "";  // Uncomment to test all meshes
 
     if (!specificMeshFile.empty()) {
