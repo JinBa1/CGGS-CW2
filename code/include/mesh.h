@@ -59,8 +59,121 @@ public:
     void create_global_matrices(const double timeStep, const double _alpha, const double _beta)
     {
 
+    // Store alpha and beta for damping matrix calculation
+    alpha = _alpha;
+    beta = _beta;
 
+    // Calculate Lamé parameters
+    double mu = youngModulus / (2 * (1 + poissonRatio));
+    double lambda = (poissonRatio * youngModulus) / ((1 + poissonRatio) * (1 - 2 * poissonRatio));
 
+    // Get dimensions of the system
+    int dim = currVelocities.size();
+    int numVertices = dim / 3;
+
+    // Initialize triplets for all sparse matrices
+    std::vector<Triplet<double>> KTriplets;
+    std::vector<Triplet<double>> MTriplets;
+
+    // Estimate number of non-zeros for stiffness matrix
+    int estimatedNonZeros = T.rows() * 16 * 9;
+    KTriplets.reserve(estimatedNonZeros);
+
+    // For mass matrix (diagonal), we know exactly how many non-zeros: 3 per vertex
+    MTriplets.reserve(dim);
+
+    // -------------------- MASS MATRIX --------------------
+    // Create lumped mass matrix (diagonal)
+    for (int i = 0; i < numVertices; i++) {
+        // Use inverse masses calculated in initializeVolumesAndMasses()
+        double vertexMass = 1.0 / invMasses(i);
+
+        // Each vertex has mass in x, y, and z components
+        MTriplets.push_back(Triplet<double>(3*i, 3*i, vertexMass));
+        MTriplets.push_back(Triplet<double>(3*i+1, 3*i+1, vertexMass));
+        MTriplets.push_back(Triplet<double>(3*i+2, 3*i+2, vertexMass));
+    }
+
+    // -------------------- STIFFNESS MATRIX --------------------
+    // For each tetrahedron
+    for (int t = 0; t < T.rows(); t++) {
+        // Get vertex indices
+        int v0 = T(t, 0);
+        int v1 = T(t, 1);
+        int v2 = T(t, 2);
+        int v3 = T(t, 3);
+
+        // Get vertex positions
+        Vector3d x0 = origPositions.segment<3>(3 * v0);
+        Vector3d x1 = origPositions.segment<3>(3 * v1);
+        Vector3d x2 = origPositions.segment<3>(3 * v2);
+        Vector3d x3 = origPositions.segment<3>(3 * v3);
+
+        // Shape matrix
+        Matrix3d Dm;
+        Dm.col(0) = x1 - x0;
+        Dm.col(1) = x2 - x0;
+        Dm.col(2) = x3 - x0;
+
+        // Inverse shape matrix
+        Matrix3d DmInv = Dm.inverse();
+
+        // Tetrahedron volume
+        double vol = std::abs(Dm.determinant()) / 6.0;
+
+        // Shape function gradients
+        std::vector<Vector3d> gradients(4);
+        gradients[1] = DmInv.col(0);
+        gradients[2] = DmInv.col(1);
+        gradients[3] = DmInv.col(2);
+        gradients[0] = -(gradients[1] + gradients[2] + gradients[3]);
+
+        // Array of vertex indices
+        int vertexIndices[4] = {v0, v1, v2, v3};
+
+        // For each vertex pair
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 4; j++) {
+                // 3x3 block for this vertex pair
+                Matrix3d Kij = Matrix3d::Zero();
+
+                // Lambda contribution (isotropic)
+                Kij += lambda * gradients[i].dot(gradients[j]) * Matrix3d::Identity();
+
+                // Mu contribution (shear)
+                for (int a = 0; a < 3; a++) {
+                    for (int b = 0; b < 3; b++) {
+                        Kij(a, b) += mu * (gradients[i](b) * gradients[j](a) +
+                                          gradients[i](a) * gradients[j](b));
+                    }
+                }
+
+                // Scale by volume
+                Kij *= vol;
+
+                // Add to triplets
+                for (int a = 0; a < 3; a++) {
+                    for (int b = 0; b < 3; b++) {
+                        KTriplets.push_back(Triplet<double>(
+                            3 * vertexIndices[i] + a,
+                            3 * vertexIndices[j] + b,
+                            Kij(a, b)
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    // Create sparse mass and stiffness matrices
+    M.resize(dim, dim);
+    K.resize(dim, dim);
+    M.setFromTriplets(MTriplets.begin(), MTriplets.end());
+    K.setFromTriplets(KTriplets.begin(), KTriplets.end());
+
+    // -------------------- DAMPING MATRIX --------------------
+    // Create Rayleigh damping matrix: D = alpha*M + beta*K
+    D = alpha * M + beta * K;
     }
     
     //returns center of mass
